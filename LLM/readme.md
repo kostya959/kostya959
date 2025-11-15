@@ -1,0 +1,1 @@
+Просто Qwen  https://huggingface.co/Qwen/Qwen3-8B-GGUF/tree/main
