@@ -4,6 +4,16 @@ from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
 from sklearn.model_selection import train_test_split
 from catboost import CatBoostClassifier
 
+def normalize_vector(vector: list) -> list:
+    """
+    Нормализация вектора для корректной работы с pgvector
+    """
+    np_vector = np.array(vector)
+    norm = np.linalg.norm(np_vector)
+    if norm > 0:
+        return (np_vector / norm).tolist()
+    return vector
+
 # --------------------------------------------------------------
 # 1. Создаем два выдуманных датафрейма
 # --------------------------------------------------------------
@@ -28,7 +38,7 @@ print("\nDF2:\n", df2)
 # 2. Косинусное сходство
 # --------------------------------------------------------------
 
-cos_sim = cosine_similarity(df1, df2)
+cos_sim = cosine_similarity(normalize_vector(df1), normalize_vector(df2))
 print("\nКосинусное сходство между строками:")
 print(cos_sim)
 
