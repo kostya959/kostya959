@@ -1,0 +1,89 @@
+import pandas as pd
+import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
+from sklearn.model_selection import train_test_split
+from catboost import CatBoostClassifier
+
+# --------------------------------------------------------------
+# 1. Создаем два выдуманных датафрейма
+# --------------------------------------------------------------
+
+df1 = pd.DataFrame({
+    'f1': [1, 2, 3, 4],
+    'f2': [1.1, 1.9, 3.2, 3.9],
+    'f3': [10, 20, 30, 40]
+})
+
+df2 = pd.DataFrame({
+    'f1': [1, 2.2, 2.9, 4.1],
+    'f2': [1.0, 2.1, 3.1, 3.8],
+    'f3': [11, 19, 29, 39]
+})
+
+print("DF1:\n", df1)
+print("\nDF2:\n", df2)
+
+
+# --------------------------------------------------------------
+# 2. Косинусное сходство
+# --------------------------------------------------------------
+
+cos_sim = cosine_similarity(df1, df2)
+print("\nКосинусное сходство между строками:")
+print(cos_sim)
+
+print("\nСреднее косинусное сходство:", cos_sim.mean())
+
+
+# --------------------------------------------------------------
+# 3. Евклидово расстояние
+# --------------------------------------------------------------
+
+eucl_dist = euclidean_distances(df1, df2)
+print("\nЕвклидово расстояние между строками:")
+print(eucl_dist)
+
+print("\nСреднее евклидово расстояние:", eucl_dist.mean())
+
+
+# --------------------------------------------------------------
+# 4. CatBoost с РАНДОМНЫМИ метками
+# --------------------------------------------------------------
+
+# Объединяем оба датафрейма
+full_df = pd.concat([df1, df2], ignore_index=True)
+
+# Генерируем случайные метки (0 или 1)
+np.random.seed(42)  # чтобы повторялось
+random_labels = np.random.randint(0, 2, size=len(full_df))
+
+full_df['target'] = random_labels
+
+print("\nСлучайно сгенерированные метки:")
+print(full_df['target'].values)
+
+# Разделение
+X = full_df.drop(columns=['target'])
+y = full_df['target']
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.3, random_state=42
+)
+
+# Модель
+model = CatBoostClassifier(
+    iterations=200,
+    depth=4,
+    learning_rate=0.1,
+    verbose=False
+)
+
+model.fit(X_train, y_train)
+
+acc = model.score(X_test, y_test)
+print("\nТочность CatBoost (метки случайные):", acc)
+
+# Предсказания для df1
+pred = model.predict_proba(df1)[:, 1]
+print("\nОценка релевантности строк df1 моделью CatBoost:")
+print(pred)загитхабь
