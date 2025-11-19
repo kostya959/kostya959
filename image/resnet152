@@ -1,0 +1,48 @@
+import torch
+import torch.nn as nn
+import torchvision.models as models
+
+class ResNet152Regressor(nn.Module):
+    def init(self, num_outputs=1, pretrained=True):
+        """
+        ResNet152 для регрессии
+        
+        Args:
+            num_outputs (int): Количество выходных значений регрессии
+            pretrained (bool): Использовать предобученные веса
+        """
+        super(ResNet152Regressor, self).init()
+        
+        # Загружаем ResNet152
+        self.resnet = models.resnet152(pretrained=pretrained)
+        
+        # Получаем количество фичей из последнего слоя
+        num_features = self.resnet.fc.in_features
+        
+        # Удаляем последний слой полностью
+        self.resnet = nn.Sequential(*list(self.resnet.children())[:-1])
+        
+        # Добавляем новые слои для регрессии
+        self.regressor = nn.Sequential(
+            nn.Linear(num_features, 512),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.2),
+            
+            nn.Linear(512, 256),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.2),
+            
+            nn.Linear(256, 128),
+            nn.ReLU(inplace=True),
+            
+            nn.Linear(128, num_outputs)  # Выход регрессии
+        )
+    
+    def forward(self, x):
+        # Features из ResNet
+        x = self.resnet(x)
+        x = x.view(x.size(0), -1)  # Flatten
+        
+        # Регрессия
+        x = self.regressor(x)
+        return x
