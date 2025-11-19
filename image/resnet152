@@ -1,48 +1,77 @@
 import torch
 import torch.nn as nn
-import torchvision.models as models
+from torchvision.models import resnet152, ResNet152_Weights
 
-class ResNet152Regressor(nn.Module):
-    def init(self, num_outputs=1, pretrained=True):
+
+class ResNet152Model(nn.Module):
+    def __init__(self, num_classes=10, pretrained=True, mode="classification"):
         """
-        ResNet152 для регрессии
-        
-        Args:
-            num_outputs (int): Количество выходных значений регрессии
-            pretrained (bool): Использовать предобученные веса
+        mode: "classification" или "regression"
+        - classification → CrossEntropyLoss
+        - regression → MSELoss, L1Loss
         """
-        super(ResNet152Regressor, self).init()
-        
+        super().__init__()
+
         # Загружаем ResNet152
-        self.resnet = models.resnet152(pretrained=pretrained)
-        
-        # Получаем количество фичей из последнего слоя
-        num_features = self.resnet.fc.in_features
-        
-        # Удаляем последний слой полностью
-        self.resnet = nn.Sequential(*list(self.resnet.children())[:-1])
-        
-        # Добавляем новые слои для регрессии
-        self.regressor = nn.Sequential(
-            nn.Linear(num_features, 512),
-            nn.ReLU(inplace=True),
-            nn.Dropout(0.2),
-            
-            nn.Linear(512, 256),
-            nn.ReLU(inplace=True),
-            nn.Dropout(0.2),
-            
-            nn.Linear(256, 128),
-            nn.ReLU(inplace=True),
-            
-            nn.Linear(128, num_outputs)  # Выход регрессии
-        )
-    
+        if pretrained:
+            self.model = resnet152(weights=ResNet152_Weights.IMAGENET1K_V2)
+        else:
+            self.model = resnet152(weights=None)
+
+        in_features = self.model.fc.in_features
+
+        # --- HEAD ---
+        if mode == "classification":
+            # 🔥 Классификация (заменяем последний слой)
+            self.model.fc = nn.Linear(in_features, num_classes)
+
+        elif mode == "regression":
+            # 🔥 Регрессия (пример: 1 число или вектор)
+            self.model.fc = nn.Sequential(
+                nn.Linear(in_features, 512),
+                nn.ReLU(),
+                nn.Dropout(0.2),
+                nn.Linear(512, num_classes),  # num_classes = размер выхода
+            )
+
+        self.mode = mode
+
     def forward(self, x):
-        # Features из ResNet
-        x = self.resnet(x)
-        x = x.view(x.size(0), -1)  # Flatten
-        
-        # Регрессия
-        x = self.regressor(x)
-        return x
+        return self.model(x)
+
+
+# ===== ПРИМЕР СОЗДАНИЯ =====
+
+# ✔️ Классификация (например, 10 классов)
+model_cls = ResNet152Model(num_classes=10, mode="classification")
+
+# ✔️ Регрессия (одно число)
+# model_reg = ResNet152Model(num_classes=1, mode="regression")
+import torch
+import torch.nn as nn
+import torch.optim as optim
+
+
+# --- Создаём фейковые данные ---
+X = torch.rand(16, 3, 224, 224)   # 16 изображений 224x224
+y = torch.randint(0, 2, (16,))    # классы 0 или 1
+
+
+# --- Модель ---
+model = ResNet152Model(num_classes=2, mode="classification")
+
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.Adam(model.parameters(), lr=1e-4)
+
+
+# --- Один шаг обучения ---
+model.train()
+optimizer.zero_grad()
+
+pred = model(X)       # (16, 2)
+loss = criterion(pred, y)
+
+loss.backward()
+optimizer.step()
+
+print("Loss:", loss.item())
