@@ -1,0 +1,118 @@
+"""
+Pipeline: распознавание речи из ZIP и ответ на вопрос с Qwen3-0.6B
+
+1) Принимаем ZIP-файл с аудиофайлами (.wav, .opus, .mp3)
+2) Распаковываем во временную папку
+3) Прогоняем каждый файл через GigaAM
+4) Передаём текст в Qwen3-0.6B
+5) Выводим ответы
+"""
+
+import zipfile                 # работа с ZIP архивами
+import tempfile                # временные папки
+import os
+import librosa
+import soundfile as sf
+import gigaam
+from transformers import AutoTokenizer, AutoModelForCausalLM
+
+# -----------------------------
+# НАСТРОЙКИ
+# -----------------------------
+ZIP_PATH = "audios.zip"             # путь к zip архиву
+ASR_MODEL_NAME = "v2_ctc"           # GigaAM
+LLM_MODEL = "Qwen/Qwen3-0.6B"       # Qwen LLM
+QUESTION = "Кратко опиши содержание сказанного человеком."
+
+# -----------------------------
+# Загрузка GigaAM
+# -----------------------------
+def load_asr_model():
+    print("Загружаем GigaAM…")
+    return gigaam.load_model(ASR_MODEL_NAME)
+
+# -----------------------------
+# Распознавание речи
+# -----------------------------
+def transcribe_audio(model, filepath):
+    # Загружаем и нормализуем звук
+    y, sr = librosa.load(filepath, sr=16000)
+    y = librosa.util.normalize(y)
+
+    # Сохраняем временный WAV
+    temp_wav = "temp.wav"
+    sf.write(temp_wav, y, 16000)
+
+    # Прогоняем через ASR
+    text = model.transcribe(temp_wav)
+
+    # Удаляем временный файл
+    if os.path.exists(temp_wav):
+        os.remove(temp_wav)
+
+    return text
+
+# -----------------------------
+# Вопрос к Qwen
+# -----------------------------
+def ask_qwen(text):
+    tokenizer = AutoTokenizer.from_pretrained(LLM_MODEL)
+    model = AutoModelForCausalLM.from_pretrained(
+        LLM_MODEL,
+        torch_dtype="auto",
+        device_map="auto"
+    )
+
+    prompt = f"""
+Распознанный текст:
+"{text}"
+
+Вопрос: {QUESTION}
+Ответ:
+"""
+    inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+    output = model.generate(**inputs, max_length=300)
+    answer = tokenizer.decode(output[0], skip_special_tokens=True)
+    return answer
+
+# -----------------------------
+# Основной запуск
+# -----------------------------
+def main():
+    # Загружаем модель ASR
+    asr_model = load_asr_model()
+
+    # Создаём временную папку для распаковки ZIP
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        print(f"Распаковываем {ZIP_PATH} в {tmpdirname}...")
+        with zipfile.ZipFile(ZIP_PATH, 'r') as zip_ref:
+            zip_ref.extractall(tmpdirname)
+
+        # Собираем все аудиофайлы в папке
+        audio_files = [
+            os.path.join(tmpdirname, f)
+            for f in os.listdir(tmpdirname)
+            if f.lower().endswith((".wav", ".opus", ".mp3"))
+        ]
+
+        if not audio_files:
+            print("В ZIP нет аудиофайлов!")
+            return
+
+        # Обрабатываем каждый файл
+        for f in audio_files:
+            print(f"\nОбрабатываем файл: {os.path.basename(f)}")
+
+            # Распознаём речь
+            recognized_text = transcribe_audio(asr_model, f)
+            print(f"[ASR TEXT]: {recognized_text}")
+
+            # Отправляем текст в Qwen
+            answer = ask_qwen(recognized_text)
+            print(f"[Qwen ANSWER]: {answer}")
+
+# -----------------------------
+# Точка входа
+# -----------------------------
+if __name__ == "__main__":
+    main()
